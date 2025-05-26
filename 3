@@ -34,15 +34,14 @@ class FileHandler(LogHandlerProtocol):
     def __init__(self, filename: str):
         self.filename = filename
 
-    def _handle(self, text: str):
-        with open(self.filename, "a") as f:
-            f.write(text + "\n")
-
     def handle(self, text: str):
         try:
-            return self._handle(text)
-        except Exception:
-            ...
+            with open(self.filename, "a") as f:
+                f.write(text + "\n")
+        except IOError as e:
+            print(f"Failed to write to file {self.filename}: {e}")
+        except Exception as e:
+            print(f"Unexpected error when writing to file {self.filename}: {e}")
 
 
 class SocketHandler(LogHandlerProtocol):
@@ -51,9 +50,17 @@ class SocketHandler(LogHandlerProtocol):
         self.port = port
 
     def handle(self, text: str):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.connect((self.host, self.port))
-            s.sendall(text.encode())
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(2)  # Устанавливаем таймаут для соединения
+                s.connect((self.host, self.port))
+                s.sendall(text.encode())
+        except socket.timeout:
+            print(f"Connection to {self.host}:{self.port} timed out")
+        except socket.error as e:
+            print(f"Socket error when connecting to {self.host}:{self.port}: {e}")
+        except Exception as e:
+            print(f"Unexpected error when sending data to socket: {e}")
 
 
 class ConsoleHandler(LogHandlerProtocol):
@@ -80,7 +87,7 @@ class Logger:
 # Демонстрация работы
 if __name__ == "__main__":
     filters = [SimpleLogFilter("ERROR"), ReLogFilter(r"\d+")]
-    handlers = [ConsoleHandler(), FileHandler("logs.txt")]
+    handlers = [ConsoleHandler(), FileHandler("logs.txt"), SocketHandler("localhost", 9999)]
 
     logger = Logger(filters, handlers)
     logger.log("ERROR: 1412412")
