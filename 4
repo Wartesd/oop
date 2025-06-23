@@ -1,172 +1,160 @@
-from typing import Protocol, Any
-import re
-
-
-class PropertyChangedListenerProtocol(Protocol):
-    def on_property_changed(self, obj: Any, property_name: str) -> None:
-        ...
-
-
-class DataChangedProtocol(Protocol):
-    def add_property_changed_listener(self, listener: PropertyChangedListenerProtocol) -> None: ...
-    def remove_property_changed_listener(self, listener: PropertyChangedListenerProtocol) -> None: ...
-
-
-class PropertyChangingListenerProtocol(Protocol):
-    def on_property_changing(self, obj: Any, property_name: str, old_value: Any, new_value: Any) -> bool:
-        ...
-
-
-class DataChangingProtocol(Protocol):
-    def add_property_changing_listener(self, listener: PropertyChangingListenerProtocol) -> None: ...
-    def remove_property_changing_listener(self, listener: PropertyChangingListenerProtocol) -> None: ...
-
-
-class ObservableValidatedClass(DataChangedProtocol, DataChangingProtocol):
-    def __init__(self, name: str, age: int):
-        self._name = name
-        self._age = age
-        self._changed_listeners: set[PropertyChangedListenerProtocol] = set()
-        self._changing_listeners: set[PropertyChangingListenerProtocol] = set()
-
-    def add_property_changed_listener(self, listener: PropertyChangedListenerProtocol) -> None:
-        try:
-            self._changed_listeners.add(listener)
-        except Exception as e:
-            print(f"Ошибка при добавлении слушателя изменений: {e}")
-
-    def remove_property_changed_listener(self, listener: PropertyChangedListenerProtocol) -> None:
-        try:
-            self._changed_listeners.remove(listener)
-        except KeyError:
-            print("Попытка удалить несуществующий слушатель изменений")
-        except Exception as e:
-            print(f"Ошибка при удалении слушателя изменений: {e}")
-
-    def add_property_changing_listener(self, listener: PropertyChangingListenerProtocol) -> None:
-        try:
-            self._changing_listeners.add(listener)
-        except Exception as e:
-            print(f"Ошибка при добавлении слушателя валидации: {e}")
-
-    def remove_property_changing_listener(self, listener: PropertyChangingListenerProtocol) -> None:
-        try:
-            self._changing_listeners.remove(listener)
-        except KeyError:
-            print("Попытка удалить несуществующий слушатель валидации")
-        except Exception as e:
-            print(f"Ошибка при удалении слушателя валидации: {e}")
-
-    def _notify_property_changing(self, property_name, old_value, new_value) -> bool:
-        for listener in self._changing_listeners:
-            try:
-                if not listener.on_property_changing(self, property_name, old_value, new_value):
-                    return False
-            except Exception as e:
-                print(f"Ошибка при валидации изменения свойства {property_name}: {e}")
-                return False
-        return True
-
-    def _notify_property_changed(self, property_name):
-        for listener in self._changed_listeners:
-            try:
-                listener.on_property_changed(self, property_name)
-            except Exception as e:
-                print(f"Ошибка при уведомлении об изменении свойства {property_name}: {e}")
+print(f"Критическая ошибка при уведомлении об изменении: {e}")
 
     @property
-    def name(self):
+    def name(self) -> str:
         return self._name
 
     @name.setter
-    def name(self, value):
-        if value != self._name and self._notify_property_changing("name", self._name, value):
-            self._name = value
-            self._notify_property_changed("name")
+    def name(self, value: str) -> None:
+        if value != self._name:
+            try:
+                if self._notify_property_changing("name", self._name, value):
+                    old_value = self._name
+                    self._name = value
+                    try:
+                        self._notify_property_changed("name")
+                    except Exception as e:
+                        # Откатываем изменение если уведомление не удалось
+                        self._name = old_value
+                        print(f"Ошибка уведомления, изменение отменено: {e}")
+            except Exception as e:
+                print(f"Фатальная ошибка при изменении имени: {e}")
 
     @property
-    def age(self):
+    def age(self) -> int:
         return self._age
 
     @age.setter
-    def age(self, value):
-        if value != self._age and self._notify_property_changing("age", self._age, value):
-            self._age = value
-            self._notify_property_changed("age")
+    def age(self, value: Any) -> None:
+        if value != self._age:
+            try:
+                if not isinstance(value, int):
+                    raise ValueError("Возраст должен быть целым числом")
+                
+                if self._notify_property_changing("age", self._age, value):
+                    old_value = self._age
+                    self._age = value
+                    try:
+                        self._notify_property_changed("age")
+                    except Exception as e:
+                        # Откатываем изменение если уведомление не удалось
+                        self._age = old_value
+                        print(f"Ошибка уведомления, изменение отменено: {e}")
+            except ValueError as e:
+                print(f"Ошибка значения возраста: {e}")
+            except Exception as e:
+                print(f"Фатальная ошибка при изменении возраста: {e}")
 
 
 class PrintChangeListener:
-    def on_property_changed(self, obj, property_name):
+    def on_property_changed(self, obj: Any, property_name: str) -> None:
         try:
-            print(f"[Изменено] {property_name} -> {getattr(obj, property_name)}")
+            value = getattr(obj, property_name)
+            print(f"[Изменено] {property_name} -> {value}")
+        except AttributeError:
+            print(f"Ошибка: свойство {property_name} не существует")
         except Exception as e:
-            print(f"Ошибка при выводе информации об изменении: {e}")
+            print(f"Ошибка вывода изменения: {e}")
 
 
 class AgeValidator:
-    def on_property_changing(self, obj, property_name, old_value, new_value) -> bool:
+    def on_property_changing(self, obj: Any, property_name: str, old_value: Any, new_value: Any) -> bool:
         try:
-            if property_name == "age" and (new_value < 0 or new_value > 150):
-                print(f"[Невалидно] Неверный возраст: {new_value}")
-                return False
+            if property_name == "age":
+                if not isinstance(new_value, int):
+                    print("[Ошибка] Возраст должен быть целым числом")
+                    return False
+                if new_value < 0 or new_value > 150:
+                    print(f"[Невалидно] Возраст {new_value} вне допустимого диапазона (0-150)")
+                    return False
             return True
         except Exception as e:
-            print(f"Ошибка при валидации возраста: {e}")
+            print(f"Критическая ошибка валидации возраста: {e}")
             return False
 
 
 class NameValidator:
-    def on_property_changing(self, obj, property_name, old_value, new_value) -> bool:
+    def on_property_changing(self, obj: Any, property_name: str, old_value: Any, new_value: Any) -> bool:
         try:
-            if property_name == "name" and not isinstance(new_value, str):
-                print("[Невалидно] Имя должно быть строкой.")
-                return False
-            if property_name == "name" and not new_value.strip():
-                print("[Невалидно] Имя не может быть пустым.")
-                return False
+            if property_name == "name":
+                if not isinstance(new_value, str):
+                    print("[Ошибка] Имя должно быть строкой")
+                    return False
+                if not new_value.strip():
+                    print("[Ошибка] Имя не может быть пустым")
+                    return False
             return True
         except Exception as e:
-            print(f"Ошибка при валидации имени: {e}")
+            print(f"Критическая ошибка валидации имени: {e}")
             return False
 
 
 class RegexValidator:
     def __init__(self, property_name: str, pattern: str):
         self.property_name = property_name
+        self.regex = None
         try:
             self.regex = re.compile(pattern)
         except re.error as e:
-            print(f"Ошибка компиляции регулярного выражения: {e}")
-            self.regex = None
+            print(f"Ошибка в регулярном выражении '{pattern}': {e}")
+        except Exception as e:
+            print(f"Неожиданная ошибка при компиляции шаблона: {e}")
 
-    def on_property_changing(self, obj, property_name, old_value, new_value) -> bool:
+    def on_property_changing(self, obj: Any, property_name: str, old_value: Any, new_value: Any) -> bool:
         if property_name != self.property_name or self.regex is None:
-            return True
+return True
             
         try:
-            if not self.regex.fullmatch(str(new_value)):
-                print(f"[Невалидно] Значение {new_value} не соответствует шаблону {self.regex.pattern}")
+            str_value = str(new_value)
+            if not self.regex.fullmatch(str_value):
+                print(f"[Ошибка] '{str_value}' не соответствует шаблону {self.regex.pattern}")
                 return False
             return True
         except Exception as e:
-            print(f"Ошибка при проверке регулярного выражения: {e}")
+            print(f"Ошибка проверки регулярного выражения: {e}")
             return False
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # Исправлено: name -> __name__
     try:
         person = ObservableValidatedClass("Иван", 30)
 
-        person.add_property_changed_listener(PrintChangeListener())
-        person.add_property_changing_listener(AgeValidator())
-        person.add_property_changing_listener(NameValidator())
-        person.add_property_changing_listener(RegexValidator("name", r"^[А-Яа-яA-Za-z]+$"))
+        # Добавляем слушатели с проверкой
+        try:
+            person.add_property_changed_listener(PrintChangeListener())
+        except Exception as e:
+            print(f"Не удалось добавить слушатель изменений: {e}")
 
-        person.name = "Алексей"
-        person.name = ""
-        person.name = "Иван123"
-        person.age = 200
-        person.age = 35
-        person.age = "тридцать пять"
+        validators = [
+            AgeValidator(),
+            NameValidator(),
+            RegexValidator("name", r"^[А-Яа-яA-Za-z]+$")
+        ]
+        
+        for validator in validators:
+            try:
+                person.add_property_changing_listener(validator)
+            except Exception as e:
+                print(f"Не удалось добавить валидатор {validator.__class__.__name__}: {e}")
+
+        # Тестовые изменения
+        test_cases = [
+            ("name", "Алексей"),
+            ("name", ""),
+            ("name", "Иван123"),
+            ("age", 200),
+            ("age", 35),
+            ("age", "тридцать пять")
+        ]
+
+        for prop, value in test_cases:
+            try:
+                if prop == "name":
+                    person.name = value
+                elif prop == "age":
+                    person.age = value
+            except Exception as e:
+                print(f"Ошибка при установке {prop} = {value}: {e}")
+
     except Exception as e:
         print(f"Критическая ошибка в работе программы: {e}")
