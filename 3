@@ -14,15 +14,30 @@ class SimpleLogFilter(LogFilterProtocol):
         self.pattern = pattern
 
     def match(self, text: str) -> bool:
-        return self.pattern in text
+        try:
+            return self.pattern in text
+        except Exception as e:
+            print(f"Error in SimpleLogFilter matching: {e}")
+            return False
 
 
 class ReLogFilter(LogFilterProtocol):
     def __init__(self, pattern: str):
-        self.regex = re.compile(pattern)
+        try:
+            self.regex = re.compile(pattern)
+        except re.error as e:
+            print(f"Invalid regex pattern '{pattern}': {e}")
+            self.regex = re.compile(r'')  # Пустой паттерн, который ничего не матчит
+        except Exception as e:
+            print(f"Unexpected error when compiling regex: {e}")
+            self.regex = re.compile(r'')
 
     def match(self, text: str) -> bool:
-        return bool(self.regex.search(text))
+        try:
+            return bool(self.regex.search(text))
+        except Exception as e:
+            print(f"Error in ReLogFilter matching: {e}")
+            return False
 
 
 class LogHandlerProtocol(Protocol):
@@ -38,8 +53,10 @@ class FileHandler(LogHandlerProtocol):
         try:
             with open(self.filename, "a") as f:
                 f.write(text + "\n")
+        except PermissionError as e:
+            print(f"Permission denied when writing to file {self.filename}: {e}")
         except IOError as e:
-            print(f"Failed to write to file {self.filename}: {e}")
+            print(f"IOError when writing to file {self.filename}: {e}")
         except Exception as e:
             print(f"Unexpected error when writing to file {self.filename}: {e}")
 
@@ -52,11 +69,13 @@ class SocketHandler(LogHandlerProtocol):
     def handle(self, text: str):
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.settimeout(2)  # Устанавливаем таймаут для соединения
+                s.settimeout(2)
                 s.connect((self.host, self.port))
                 s.sendall(text.encode())
         except socket.timeout:
             print(f"Connection to {self.host}:{self.port} timed out")
+        except socket.gaierror:
+            print(f"Address-related error when connecting to {self.host}:{self.port}")
         except socket.error as e:
             print(f"Socket error when connecting to {self.host}:{self.port}: {e}")
         except Exception as e:
@@ -65,12 +84,18 @@ class SocketHandler(LogHandlerProtocol):
 
 class ConsoleHandler(LogHandlerProtocol):
     def handle(self, text: str):
-        print(text)
+        try:
+            print(text)
+        except Exception as e:
+            print(f"Error writing to console: {e}")
 
 
 class SyslogHandler(LogHandlerProtocol):
     def handle(self, text: str):
-        sys.stderr.write(text + "\n")
+        try:
+            sys.stderr.write(text + "\n")
+        except Exception as e:
+            print(f"Error writing to syslog: {e}")
 
 
 class Logger:
@@ -79,12 +104,14 @@ class Logger:
         self.__handlers = _handlers
 
     def log(self, text: str):
-        if all(f.match(text) for f in self.__filters):
-            for handler in self.__handlers:
-                handler.handle(text)
+        try:
+            if all(f.match(text) for f in self.__filters):
+                for handler in self.__handlers:
+                    handler.handle(text)
+        except Exception as e:
+            print(f"Error during logging: {e}")
 
 
-# Демонстрация работы
 if __name__ == "__main__":
     filters = [SimpleLogFilter("ERROR"), ReLogFilter(r"\d+")]
     handlers = [ConsoleHandler(), FileHandler("logs.txt"), SocketHandler("localhost", 9999)]
